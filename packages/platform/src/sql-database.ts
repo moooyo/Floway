@@ -12,12 +12,12 @@ export interface SqlResultMeta {
   changes?: number;
 }
 
-// The value types every deployment target accepts as a bound parameter.
-// This is the intersection, not the union: `node:sqlite` (the Node target)
-// rejects anything outside this set with ERR_INVALID_ARG_TYPE, while D1
-// silently coerces JS booleans to 0/1. Typing the contract at the strictest
-// runtime keeps a bind that only works on Workers from reaching a self-hosted
-// deploy. Callers storing a flag pass `value ? 1 : 0` explicitly.
+// The values `node:sqlite` accepts as a bound parameter. It is the strictest
+// of the backends the repo layer runs on — it throws ERR_INVALID_ARG_TYPE on
+// anything else, where D1 and the sql.js test backend both coerce a JS boolean
+// to 0/1 — so typing the contract at its rule is what keeps a bind that works
+// on Workers from failing on every request of a self-hosted deploy. Callers
+// storing a flag pass `value ? 1 : 0` explicitly.
 export type SqlBindValue = null | number | bigint | string | Uint8Array;
 
 export interface SqlPreparedStatement {
