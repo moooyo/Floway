@@ -18,21 +18,20 @@ export const createSqliteTestDb = async (): Promise<SqlDatabase> => {
   return new SqlJsSqlDatabase(db);
 };
 
-// sql.js and D1 both coerce a JS boolean to 0/1; `node:sqlite` — the Node
-// deployment target's driver — rejects it with ERR_INVALID_ARG_TYPE. A test
-// backend looser than the strictest deployment target lets such a bind ship
-// green and fail only on a self-hosted deploy, so hold this one to the same
-// value set `SqlBindValue` declares.
+// Each backend rejects something another one accepts: `node:sqlite` throws on
+// a boolean that D1 and sql.js coerce to 0/1, and D1 throws D1_TYPE_ERROR on a
+// bigint that `node:sqlite` takes. A test backend looser than every deployment
+// target lets such a bind ship green and fail only once deployed, so hold this
+// one to the intersection `SqlBindValue` declares.
 const assertBindable = (value: unknown, index: number): unknown => {
   if (
     value === null
     || typeof value === 'number'
-    || typeof value === 'bigint'
     || typeof value === 'string'
     || value instanceof Uint8Array
   ) return value;
   throw new TypeError(
-    `SQL parameter ${index + 1} is a ${typeof value}; bind only null, number, bigint, string, or Uint8Array (a flag binds as \`value ? 1 : 0\`).`,
+    `SQL parameter ${index + 1} is a ${typeof value}; bind only null, number, string, or Uint8Array (a flag binds as \`value ? 1 : 0\`).`,
   );
 };
 

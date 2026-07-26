@@ -12,13 +12,19 @@ export interface SqlResultMeta {
   changes?: number;
 }
 
-// The values `node:sqlite` accepts as a bound parameter. It is the strictest
-// of the backends the repo layer runs on — it throws ERR_INVALID_ARG_TYPE on
-// anything else, where D1 and the sql.js test backend both coerce a JS boolean
-// to 0/1 — so typing the contract at its rule is what keeps a bind that works
-// on Workers from failing on every request of a self-hosted deploy. Callers
-// storing a flag pass `value ? 1 : 0` explicitly.
-export type SqlBindValue = null | number | bigint | string | Uint8Array;
+// The values every backend the repo layer runs on accepts as a bound
+// parameter — the intersection, not the union, because each backend rejects
+// something another one takes:
+//   * `node:sqlite` (Node target) throws ERR_INVALID_ARG_TYPE on a boolean,
+//     which D1 and the sql.js test backend both coerce to 0/1;
+//   * D1 (Workers target) throws D1_TYPE_ERROR on a bigint, which
+//     `node:sqlite` accepts;
+//   * `node:sqlite` also rejects the ArrayBuffer that D1 takes — pass binary
+//     as a Uint8Array, which both accept.
+// Typing the contract at the intersection is what keeps a bind that works on
+// one deployment target from failing on another. Callers storing a flag pass
+// `value ? 1 : 0` explicitly.
+export type SqlBindValue = null | number | string | Uint8Array;
 
 export interface SqlPreparedStatement {
   bind(...values: SqlBindValue[]): SqlPreparedStatement;
