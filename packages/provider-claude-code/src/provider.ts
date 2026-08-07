@@ -123,6 +123,10 @@ export const createClaudeCodeProvider = (record: UpstreamRecord): Provider => {
     kind: 'claude-code',
     name: record.name,
     inboundHeaderAllowlist: INBOUND_HEADER_ALLOWLIST,
+    // The rest of the allowlist describes the client build and its content
+    // negotiation, which stay true for the life of a connection. These two
+    // identify the individual turn.
+    turnScopedInboundHeaders: ['x-claude-code-session-id', 'x-client-request-id'],
     disabledPublicModelIds: record.disabledPublicModelIds,
     modelPrefix: record.modelPrefix,
     modelsCache: record.modelsCache,

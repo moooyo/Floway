@@ -279,6 +279,11 @@ const handleClientMessage = async (
       // sees the exact `response.create` payload the client sent.
       requestBody: takeRequestBody(requestBody),
       method: 'WS',
+      // One socket carries many turns and frames carry no headers, so the only
+      // headers reachable from here are the upgrade's. They authenticated the
+      // connection and still describe it, but they stopped describing the turn
+      // the moment a second one arrived.
+      inboundHeadersScope: 'connection',
       model: payload.model,
       backgroundScheduler,
     }, (apiKey, requestStartedAt) => session.createStore(apiKey, requestStartedAt, payload.store ?? undefined));

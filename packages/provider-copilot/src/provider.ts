@@ -471,6 +471,7 @@ export const createCopilotProvider = (record: UpstreamRecord): Provider => {
     kind: 'copilot',
     name: copilot.name,
     inboundHeaderAllowlist: [],
+    turnScopedInboundHeaders: [],
     disabledPublicModelIds: copilot.disabledPublicModelIds,
     modelPrefix: copilot.modelPrefix,
     modelsCache: copilot.modelsCache,

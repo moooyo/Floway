@@ -112,3 +112,69 @@ describe('provider inbound header policies', () => {
     expect(source.get('x-client-request-id')).toBe('request-1');
   });
 });
+
+// A transport that reuses one request context across many turns can only offer
+// the headers of the request that opened it. Anything the provider reads as a
+// property of the turn is stale from the second turn onward, so the gateway
+// withholds exactly those names and lets the provider fall back to a per-turn
+// surface instead.
+describe('connection-scoped inbound headers', () => {
+  const codexLike = (turnScoped: readonly InboundHeaderMatcher[]) => ({
+    ...stubModelCandidate().provider,
+    inboundHeaderAllowlist: ['session-id', 'thread-id', 'user-agent', /^x-codex-.*$/] as InboundHeaderMatcher[],
+    turnScopedInboundHeaders: turnScoped,
+  });
+
+  const source = () => new Headers({
+    'session-id': 'handshake-session',
+    'thread-id': 'handshake-thread',
+    'x-codex-window-id': 'handshake-session:0',
+    'user-agent': 'codex-cli/1.0',
+  });
+
+  test('withholds the turn-scoped names and keeps everything else', () => {
+    const provider = codexLike(['session-id', 'thread-id', /^x-codex-.*$/]);
+
+    expect(headerRecord(filterInboundHeadersForProvider(source(), provider, 'connection'))).toEqual({
+      'user-agent': 'codex-cli/1.0',
+    });
+  });
+
+  test('forwards the same bag untouched when the headers describe the turn', () => {
+    const provider = codexLike(['session-id', 'thread-id', /^x-codex-.*$/]);
+    const expected = {
+      'session-id': 'handshake-session',
+      'thread-id': 'handshake-thread',
+      'x-codex-window-id': 'handshake-session:0',
+      'user-agent': 'codex-cli/1.0',
+    };
+
+    expect(headerRecord(filterInboundHeadersForProvider(source(), provider, 'turn'))).toEqual(expected);
+    expect(headerRecord(filterInboundHeadersForProvider(source(), provider))).toEqual(expected);
+  });
+
+  // Operator-configured ingress rules name headers a deployment wants
+  // forwarded, not per-turn identity, so a provider that declares none keeps
+  // every allowlisted header on every transport.
+  test('withholds nothing from a provider that declares no turn-scoped names', () => {
+    expect(headerRecord(filterInboundHeadersForProvider(source(), codexLike([]), 'connection')))
+      .toEqual(headerRecord(filterInboundHeadersForProvider(source(), codexLike([]), 'turn')));
+  });
+
+  test('buildUpstreamCallOptions reads the scope off the request ctx', () => {
+    const candidate = stubModelCandidate({
+      provider: { ...codexLike(['session-id', 'thread-id', /^x-codex-.*$/]), instance: stubProvider() },
+    });
+
+    const perTurn = buildUpstreamCallOptions(candidate, mockGatewayCtx(), source());
+    const perConnection = buildUpstreamCallOptions(
+      candidate,
+      mockGatewayCtx({ inboundHeadersScope: 'connection' }),
+      source(),
+    );
+
+    expect(perTurn.headers.get('session-id')).toBe('handshake-session');
+    expect(perConnection.headers.get('session-id')).toBeNull();
+    expect(perConnection.headers.get('user-agent')).toBe('codex-cli/1.0');
+  });
+});

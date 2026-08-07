@@ -111,6 +111,7 @@ export const createAzureProvider = (record: UpstreamRecord): Provider => {
     kind: 'azure',
     name: azure.name,
     inboundHeaderAllowlist: [],
+    turnScopedInboundHeaders: [],
     disabledPublicModelIds: azure.disabledPublicModelIds,
     modelPrefix: azure.modelPrefix,
     modelsCache: azure.modelsCache,

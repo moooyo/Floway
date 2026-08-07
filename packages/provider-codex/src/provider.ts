@@ -174,6 +174,11 @@ export const createCodexProvider = (record: UpstreamRecord): Provider => {
     kind: 'codex',
     name: record.name,
     inboundHeaderAllowlist: INBOUND_HEADER_ALLOWLIST,
+    // Every allowlisted header is an identity mirror that `buildCodexRequestIdentity`
+    // reads ahead of the body's `client_metadata`. On a transport that cannot
+    // present them per turn they must be withheld, so that fallback reaches the
+    // frame's own metadata instead of replaying the connection's first turn.
+    turnScopedInboundHeaders: INBOUND_HEADER_ALLOWLIST,
     disabledPublicModelIds: record.disabledPublicModelIds,
     modelPrefix: record.modelPrefix,
     modelsCache: record.modelsCache,
