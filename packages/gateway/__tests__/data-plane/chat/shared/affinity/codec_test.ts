@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AffinityCodec } from '../../../../../src/data-plane/chat/shared/affinity/index.ts';
 import type { AffinityTarget } from '../../../../../src/data-plane/chat/shared/affinity/index.ts';
@@ -161,5 +161,81 @@ describe('AffinityCodec', () => {
   test('rejects malformed secrets', () => {
     expect(() => new AffinityCodec('00')).toThrow(TypeError);
     expect(() => new AffinityCodec('AA'.repeat(32))).toThrow(TypeError);
+  });
+});
+
+// A carrier Floway cannot open is forwarded to the upstream verbatim, trailer
+// included, and the upstream then rejects a blob it cannot parse. The
+// pass-through is required for gateway chaining and stays; what these tests pin
+// is that reaching it no longer happens silently, so the failure is diagnosable
+// from Floway's own logs instead of only from the upstream's rejection.
+describe('AffinityCodec unopenable carrier reporting', () => {
+  const warnings = (): string[] =>
+    vi.mocked(console.warn).mock.calls.map(call => String(call[0]));
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('reports a carrier issued under a different server secret', async () => {
+    const wrapped = await new AffinityCodec(SECRET).wrap('opaque', affinity, DOMAIN);
+
+    expect(await new AffinityCodec(OTHER_SECRET).unwrap(wrapped, DOMAIN)).toEqual({ kind: 'foreign', value: wrapped });
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('reason=authentication');
+    expect(warnings()[0]).toContain(`domain=${DOMAIN}`);
+    expect(warnings()[0]).toContain(`chars=${wrapped.length}`);
+  });
+
+  test('reports a carrier read back at a different domain', async () => {
+    const codec = new AffinityCodec(SECRET);
+    const wrapped = await codec.wrap('opaque', affinity, DOMAIN);
+
+    expect(await codec.unwrap(wrapped, 'other.carrier')).toEqual({ kind: 'foreign', value: wrapped });
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('reason=authentication');
+    expect(warnings()[0]).toContain('domain=other.carrier');
+  });
+
+  // AES-GCM authenticated the trailer under this instance's key before this
+  // branch is reachable, so the carrier is provably this gateway's own — the
+  // one case where forwarding it upstream is certainly wrong.
+  test('reports a carrier whose plaintext this build does not understand', async () => {
+    const codec = new AffinityCodec(SECRET);
+    const wrapped = await codec.wrap(
+      undefined,
+      { ...affinity, extra: 'not-part-of-the-contract' } as AffinityTarget,
+      DOMAIN,
+    );
+
+    expect(await codec.unwrap(wrapped, DOMAIN)).toEqual({ kind: 'foreign', value: wrapped });
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toContain('reason=plaintext-shape');
+  });
+
+  test('stays silent for a value that carries no Floway framing', async () => {
+    const codec = new AffinityCodec(SECRET);
+
+    expect(await codec.unwrap('not-a-carrier', DOMAIN)).toEqual({ kind: 'foreign', value: 'not-a-carrier' });
+    expect(warnings()).toEqual([]);
+  });
+
+  // Chaining: the inner gateway's carrier is ordinary foreign data to the outer
+  // one and to the upstream, so neither unwrap may raise a false alarm.
+  test('stays silent on a successful round trip and on a nested gateway carrier', async () => {
+    const innerCodec = new AffinityCodec(OTHER_SECRET);
+    const outerCodec = new AffinityCodec(SECRET);
+    const inner = await innerCodec.wrap('upstream', affinity, DOMAIN);
+    const outer = await outerCodec.wrap(inner, { ...affinity, upstreamId: 'inner-gateway' }, DOMAIN);
+
+    const outerDecoded = await outerCodec.unwrap(outer, DOMAIN);
+    expect(outerDecoded.kind).toBe('owned');
+    if (outerDecoded.kind !== 'owned') throw new Error('Expected owned outer carrier');
+    expect(await innerCodec.unwrap(outerDecoded.value!, DOMAIN)).toMatchObject({ kind: 'owned', value: 'upstream' });
+    expect(warnings()).toEqual([]);
   });
 });
