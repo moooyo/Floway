@@ -13,6 +13,6 @@ export const buildUpstreamCallOptions = (
 ): UpstreamCallOptions => ({
   fetcher: retainUpstreamFetcher(candidate.fetcher, ctx.clientDisconnectSignal, ctx.backgroundScheduler),
   waitUntil: ctx.backgroundScheduler,
-  headers: filterInboundHeadersForProvider(headers, candidate.provider),
+  headers: filterInboundHeadersForProvider(headers, candidate.provider, ctx.inboundHeadersScope),
   wrapUpstreamCall: stampUpstreamCallStart(ctx.attempt, ctx.clientDisconnectSignal),
 });

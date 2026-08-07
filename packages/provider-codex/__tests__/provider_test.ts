@@ -85,6 +85,16 @@ describe('createCodexProvider', () => {
     ]);
   });
 
+  // Every one of them is an identity mirror `buildCodexRequestIdentity` reads
+  // ahead of the body's `client_metadata`, so a transport that cannot present
+  // them per turn must have all of them withheld — otherwise the first turn's
+  // identity is replayed for the life of the connection.
+  test('declares its whole allowlist as turn-scoped', () => {
+    const provider = createCodexProvider(baseRecord);
+
+    expect(provider.turnScopedInboundHeaders).toEqual(provider.inboundHeaderAllowlist);
+  });
+
   test('returns an instance carrying provider kind and identity', async () => {
     const instance = createCodexProvider(baseRecord);
     expect(instance.kind).toBe('codex');

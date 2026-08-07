@@ -1,3 +1,4 @@
+import type { InboundHeadersScope } from './inbound-headers.ts';
 import type { RequestBody } from './request-body.ts';
 import { retainResponse } from './retained-response.ts';
 import { type DumpAccumulator, openDumpAccumulator } from '../../dump/accumulator.ts';
@@ -43,6 +44,13 @@ export interface GatewayCtx {
   // `finalizeGatewayResponse` skips only the dump tee. Response lifetime
   // retention still applies.
   readonly dump: DumpAccumulator | null;
+  // Whether the headers this ctx's request carries describe the turn being
+  // dispatched. One ctx per HTTP request means `turn`; the Responses WebSocket
+  // entry builds one ctx per connection and reuses it for every frame, so its
+  // headers are the handshake's and it declares `connection`. Read at the
+  // provider-call boundary to decide whether turn-scoped headers may be
+  // forwarded.
+  readonly inboundHeadersScope: InboundHeadersScope;
 }
 
 export interface CreateGatewayCtxOptions {
@@ -61,6 +69,11 @@ export interface CreateGatewayCtxOptions {
   // WS Responses path uses `'WS'` so a dumped turn reads as
   // `WS /v1/responses` in the dashboard rather than the upgrade's `GET`.
   method?: string;
+  // Defaults to `'turn'`, which is correct for every entry that builds one ctx
+  // per request. A transport that reuses one ctx across turns must declare
+  // `'connection'` so turn-scoped headers are not replayed from the request
+  // that opened it.
+  inboundHeadersScope?: InboundHeadersScope;
   // The model id parsed from the request payload (or from the URL on
   // Gemini's routes), stamped on the dump immediately so even an
   // outright-error turn carries model attribution. Omit only on error
@@ -99,6 +112,7 @@ export const createGatewayCtxFromHono = (c: AuthedContext, opts: CreateGatewayCt
     attempt: { firstOutputTokenAt: null, upstreamCallStartedAt: null, telemetry: undefined },
     runtimeLocation: getRuntimeLocation(c.req.raw),
     dump,
+    inboundHeadersScope: opts.inboundHeadersScope ?? 'turn',
   };
 };
 

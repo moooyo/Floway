@@ -233,6 +233,11 @@ export const createCustomProvider = (record: UpstreamRecord): Provider => {
     kind: 'custom',
     name: record.name,
     inboundHeaderAllowlist: config.ingressHeadersRules.map(rule => rule.key),
+    // Operator-configured ingress rules name headers the deployment wants
+    // forwarded, not per-turn identity, so they keep flowing on every
+    // transport. Withholding them on a WebSocket would break the operator's
+    // configuration rather than protect it.
+    turnScopedInboundHeaders: [],
     disabledPublicModelIds: record.disabledPublicModelIds,
     modelPrefix: record.modelPrefix,
     modelsCache: record.modelsCache,

@@ -33,6 +33,21 @@ export interface Provider {
   // ASCII-case-insensitive names; regular expressions run against normalized
   // lowercase names. The gateway applies this at the candidate boundary.
   inboundHeaderAllowlist: readonly InboundHeaderMatcher[];
+  // The subset of `inboundHeaderAllowlist` this instance reads as properties of
+  // the individual turn rather than of the client connection — per-turn
+  // identity, per-turn correlation ids, per-turn metadata blobs.
+  //
+  // Not every transport can supply headers per turn. An HTTP entry builds one
+  // request per turn, so all of its headers describe that turn. The Responses
+  // WebSocket entry authenticates one upgrade and then carries many turns as
+  // frames, and frames have no headers at all — so the only headers it can
+  // offer are the handshake's, which describe the connection and stop being
+  // true of the turn the moment a second one arrives. The gateway withholds
+  // exactly these names when it knows the headers are connection-scoped, which
+  // lets a provider fall back to a surface that is genuinely per-turn instead
+  // of silently replaying a stale value. Everything outside this list keeps
+  // flowing on every transport.
+  turnScopedInboundHeaders: readonly InboundHeaderMatcher[];
   disabledPublicModelIds: readonly string[];
   // Per-upstream model name prefix policy mirrored from the source upstream
   // record so registry helpers — routing and listing — read it from the

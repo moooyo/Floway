@@ -14,6 +14,7 @@ const stubCandidate = (id: string, upstream = 'up'): ModelCandidate =>
       kind: 'custom',
       name: upstream,
       inboundHeaderAllowlist: [],
+      turnScopedInboundHeaders: [],
       disabledPublicModelIds: [],
       modelPrefix: null,
       modelsCache: null,

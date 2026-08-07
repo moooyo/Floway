@@ -193,6 +193,7 @@ export const createOllamaProvider = (record: UpstreamRecord): Provider => {
     kind: 'ollama',
     name: record.name,
     inboundHeaderAllowlist: [],
+    turnScopedInboundHeaders: [],
     disabledPublicModelIds: record.disabledPublicModelIds,
     modelPrefix: record.modelPrefix,
     modelsCache: record.modelsCache,

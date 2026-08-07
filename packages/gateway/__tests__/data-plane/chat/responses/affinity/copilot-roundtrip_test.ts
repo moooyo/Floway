@@ -83,6 +83,7 @@ test('Copilot item-id and generic affinity trailers compose and unwrap in bounda
       kind: 'custom',
       name: 'Other',
       inboundHeaderAllowlist: [],
+      turnScopedInboundHeaders: [],
       disabledPublicModelIds: [],
       modelPrefix: null,
       modelsCache: null,
