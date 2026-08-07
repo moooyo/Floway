@@ -97,6 +97,49 @@ const authenticatedCarrierData = (domain: string, original: Uint8Array): Uint8Ar
   return concatBytes(uint16be(domainBytes.length), domainBytes, original);
 };
 
+// Why a carrier failed to open, for the operator-facing report only. Callers
+// still receive the same `foreign` verdict for every one of these.
+type UnopenableCarrierReason =
+  // AES-GCM rejected the trailer. The likely causes are a carrier issued under
+  // a different server secret and a carrier read back at a different domain
+  // than it was wrapped at.
+  | 'authentication'
+  // The trailer authenticated, but its plaintext is not affinity data this
+  // build understands.
+  | 'plaintext-shape'
+  // The trailer authenticated and claims to carry no original value, yet the
+  // frame holds original bytes.
+  | 'plaintext-origin';
+
+// Floway forwards a carrier it cannot open to the upstream verbatim, trailer
+// and all. That pass-through is deliberate and must stay: a carrier this
+// instance cannot open may belong to another Floway it is chained behind, and
+// stripping the trailer would corrupt that carrier instead of repairing it.
+//
+// The cost is that one of this gateway's own carriers going bad is
+// indistinguishable, on every operator surface, from an ordinary foreign
+// value. The upstream rejects a blob it cannot parse, and nothing here records
+// why: dumps capture response frames before affinity wrapping, and no dump
+// record holds the upstream request at all. `splitOpaqueTrailer` succeeding is
+// the signal that separates the two cases, so report it rather than discard it.
+//
+// `authentication` still admits a false positive, because a value this gateway
+// never wrapped can decode as base64 and happen to end in a plausible two-byte
+// length marker. The two `plaintext-*` reasons cannot: AES-GCM already
+// authenticated the trailer under this instance's key before either is
+// reachable, so those carriers are provably this gateway's own.
+const reportUnopenableCarrier = (
+  domain: string,
+  reason: UnopenableCarrierReason,
+  valueLength: number,
+): void => {
+  console.warn(
+    'Floway affinity carrier could not be opened and is being forwarded upstream unchanged '
+    + `(reason=${reason}, domain=${domain}, chars=${valueLength}). `
+    + `A plaintext-* reason means the carrier is provably this gateway's own.`,
+  );
+};
+
 export class AffinityCodec {
   readonly #key: Promise<CryptoKey>;
 
@@ -134,6 +177,9 @@ export class AffinityCodec {
 
   async unwrap(value: string, domain: string): Promise<DecodedAffinityBlob> {
     const framed = splitOpaqueTrailer(value, IV_BYTES + 16);
+    // No trailer framing at all, so this gateway never wrapped the value. That
+    // is the ordinary case — a blob minted by the upstream, or by a gateway
+    // this one sits behind — and the only exit that stays silent.
     if (framed === null) return { kind: 'foreign', value };
 
     const encrypted = framed.trailer;
@@ -149,15 +195,24 @@ export class AffinityCodec {
         ownedBuffer(ciphertext),
       );
       const data = parseAffinityData(JSON.parse(fatalTextDecoder.decode(plaintext)) as unknown);
-      if (data === null) return { kind: 'foreign', value };
+      if (data === null) return this.#unopenable(value, domain, 'plaintext-shape');
       if (data.origin === undefined) {
         return original.length === 0
           ? { kind: 'owned', ...data }
-          : { kind: 'foreign', value };
+          : this.#unopenable(value, domain, 'plaintext-origin');
       }
       return { kind: 'owned', value: encodeOpaqueValue(original, data.origin), ...data };
     } catch {
-      return { kind: 'foreign', value };
+      return this.#unopenable(value, domain, 'authentication');
     }
+  }
+
+  // The value carried this gateway's own trailer framing and still could not be
+  // opened. Callers get the same `foreign` verdict they already act on — the
+  // wire behaviour is unchanged on purpose — but the occurrence is reported so
+  // the failure stops being invisible.
+  #unopenable(value: string, domain: string, reason: UnopenableCarrierReason): DecodedAffinityBlob {
+    reportUnopenableCarrier(domain, reason, value.length);
+    return { kind: 'foreign', value };
   }
 }
